@@ -29,6 +29,7 @@ contract Auction {
     mapping(address => uint) public bids;
 
     uint bidIncrement;
+    bool public ownerFinalized = false;
 
     modifier onlyOwner() {
         require(msg.sender == owner, "You are not the owner!");
@@ -55,7 +56,7 @@ contract Auction {
         owner = payable(eoa);
         auctionState = State.Running;
         startBlock = block.number;  // initialize the start block as the current block
-        endBlock = startBlock + 3;  // 40320 represents the number of blocks generated in a week (assuming 15 secs/block)
+        endBlock = startBlock + 40320;  // 40320 represents the number of blocks generated in a week (assuming 15 secs/block)
         ipfsHash = "";
         bidIncrement = 1000000000000000000; // 1 Ether
     }
@@ -67,7 +68,7 @@ contract Auction {
 
     function placeBid() public payable notOwner afterStart beforeEnd {
         require(auctionState == State.Running, "Auction is not in running state!");
-        require(msg.value >= 100, "Bid increment is less than 100 wei!");
+        require(msg.value >= 10000000000000000, "Bid increment is less than 1 Ether!");
 
         uint currentBid = bids[msg.sender] + msg.value;
         require(currentBid > highestBindingBid, "Current bid is lower than the highest binding bid!");
@@ -104,18 +105,25 @@ contract Auction {
 
         }
         // auction ended, not canceled
-        if (msg.sender == owner) { // this is the owner
-            recipient = owner;
-            value = highestBindingBid;
-        }
-        else { // this is a bidder
-            if (msg.sender == highestBidder) { // case for the highest bidder
-                recipient = highestBidder;
-                value = bids[highestBidder] - highestBindingBid;
+        else { 
+            if (msg.sender == owner && ownerFinalized == false) { // this is the owner who finalizes the auction
+                recipient = owner;
+                value = highestBindingBid;
+                // owner can finalize the auction only once
+                ownerFinalized = true;
             }
-            // case for one of the other bidders in the auction
-            recipient = payable(msg.sender);
-            value = bids[msg.sender]; 
+            else { // this is a bidder
+                if (msg.sender == highestBidder) { // case for the highest bidder
+                    recipient = highestBidder;
+                    value = bids[highestBidder] - highestBindingBid;
+                }
+                else {
+                    // case for one of the other bidders in the auction
+                    recipient = payable(msg.sender);
+                    value = bids[msg.sender]; 
+                }
+                
+            }
         }
         // resetiing the bids of the recipient to zero
         bids[recipient] = 0; // prevent any bidder from finalizing the auction more than once
